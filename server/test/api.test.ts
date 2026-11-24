@@ -48,23 +48,56 @@ test("create returns 201 with the stored design and derived geometry", async () 
   assert.equal(res.headers.location, "/api/designs/1");
 });
 
-test("list returns saved designs, newest first, with total", async () => {
+const names = (body: { items: { name: string }[] }) => body.items.map((d) => d.name);
+
+test("list returns saved designs, newest first, and no cursor when everything fits", async () => {
   await create("A");
   await create("B");
   const res = await app.inject({ method: "GET", url: "/api/designs" });
   assert.equal(res.statusCode, 200);
   const body = res.json();
-  assert.equal(body.total, 2);
-  assert.deepEqual(body.items.map((d: { name: string }) => d.name), ["B", "A"]);
+  assert.deepEqual(names(body), ["B", "A"]);
+  assert.equal(body.nextCursor, null);
 });
 
-test("list is paginated and rejects bad paging values", async () => {
-  for (const n of ["A", "B", "C"]) await create(n);
-  const page = await app.inject({ method: "GET", url: "/api/designs?limit=2&offset=2" });
-  assert.equal(page.statusCode, 200);
-  assert.deepEqual(page.json().items.map((d: { name: string }) => d.name), ["A"]);
-  assert.equal(page.json().total, 3);
-  for (const q of ["limit=0", "limit=101", "limit=abc", "offset=-1", "limit="]) {
+test("list pages with a cursor: every design exactly once, in order", async () => {
+  for (const n of ["A", "B", "C", "D", "E"]) await create(n);
+  const seen: string[] = [];
+  let url = "/api/designs?limit=2";
+  for (let guard = 0; guard < 10; guard++) {
+    const res = await app.inject({ method: "GET", url });
+    assert.equal(res.statusCode, 200);
+    const body = res.json();
+    assert.ok(body.items.length <= 2);
+    seen.push(...names(body));
+    if (body.nextCursor === null) break;
+    url = `/api/designs?limit=2&cursor=${encodeURIComponent(body.nextCursor)}`;
+  }
+  assert.deepEqual(seen, ["E", "D", "C", "B", "A"]);
+});
+
+test("an exactly full last page still reports no further cursor", async () => {
+  for (const n of ["A", "B"]) await create(n);
+  const res = await app.inject({ method: "GET", url: "/api/designs?limit=2" });
+  assert.equal(res.json().nextCursor, null);
+});
+
+test("list rejects bad paging values, malformed cursors and unknown query keys", async () => {
+  const garbage = Buffer.from("not-a-cursor").toString("base64url");
+  const badDate = Buffer.from("2026-13-99T99:99:99.999Z|1").toString("base64url");
+  const badId = Buffer.from("2026-11-25T00:00:00.000Z|0").toString("base64url");
+  for (const q of [
+    "limit=0",
+    "limit=101",
+    "limit=abc",
+    "limit=",
+    "cursor=",
+    `cursor=${garbage}`,
+    `cursor=${badDate}`,
+    `cursor=${badId}`,
+    `cursor=${"A".repeat(200)}`,
+    "offset=2", // removed parameter must fail loudly, not be ignored
+  ]) {
     const res = await app.inject({ method: "GET", url: `/api/designs?${q}` });
     assert.equal(res.statusCode, 400, q);
     assert.equal(res.json().error.code, "VALIDATION_FAILED", q);
@@ -138,7 +171,7 @@ test("invalid params are rejected with field-level details and nothing is stored
   const paths = body.error.details.map((d: { path: string }) => d.path).sort();
   assert.deepEqual(paths, ["params.liftingHeightMm", "params.spanMm"]);
   const list = await app.inject({ method: "GET", url: "/api/designs" });
-  assert.equal(list.json().total, 0);
+  assert.equal(list.json().items.length, 0);
 });
 
 test("name is required, trimmed and length-limited", async () => {
@@ -158,7 +191,7 @@ test("name with control characters or broken Unicode is rejected with 400, never
     assert.equal(res.json().error.details[0].path, "name", JSON.stringify(name));
   }
   const list = await app.inject({ method: "GET", url: "/api/designs" });
-  assert.equal(list.json().total, 0);
+  assert.equal(list.json().items.length, 0);
   // Normal non-ASCII names still work.
   assert.equal((await create("Kran Halle 2 ü الرافعة \u{1F3D7}")).statusCode, 201);
 });
@@ -168,14 +201,6 @@ test("update also rejects control characters in the name", async () => {
   const res = await app.inject({ method: "PUT", url: "/api/designs/1", payload: { name: "\u0000x", params, version: 1 } });
   assert.equal(res.statusCode, 400);
   assert.equal(res.json().error.code, "VALIDATION_FAILED");
-});
-
-test("offset accepts its declared maximum", async () => {
-  const res = await app.inject({ method: "GET", url: "/api/designs?offset=1000000" });
-  assert.equal(res.statusCode, 200);
-  const over = await app.inject({ method: "GET", url: "/api/designs?offset=1000001" });
-  assert.equal(over.statusCode, 400);
-  assert.match(over.json().error.details[0].message, /at most 1000000/);
 });
 
 test("non-JSON bodies, including text/plain, get 415", async () => {
@@ -244,7 +269,7 @@ test("preview validates and returns geometry without saving", async () => {
   assert.equal(bad.json().error.details[0].path, "params.spanMm");
 
   const list = await app.inject({ method: "GET", url: "/api/designs" });
-  assert.equal(list.json().total, 0);
+  assert.equal(list.json().items.length, 0);
 });
 
 test("saved design drawing is served as a downloadable SVG with safe headers", async () => {

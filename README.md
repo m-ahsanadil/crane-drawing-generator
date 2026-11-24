@@ -93,7 +93,7 @@ All bodies are JSON. Every error has the same shape:
 | `GET /api/health` | Liveness | 200 |
 | `GET /api/crane-options` | Allowed capacities and limits | 200 |
 | `POST /api/preview` | Validate params, return geometry + SVG (not saved) | 200 |
-| `GET /api/designs?limit=&offset=` | List, newest change first (limit 1–100) | 200 |
+| `GET /api/designs?limit=&cursor=` | List, newest change first (limit 1–100, default 50); returns `nextCursor` (or `null` on the last page) | 200 |
 | `POST /api/designs` | Create `{ name, params }` | 201 + `Location` |
 | `GET /api/designs/:id` | Reopen one design | 200 |
 | `PUT /api/designs/:id` | Edit `{ name, params, version }` | 200, version + 1 |
@@ -132,8 +132,10 @@ Runtime dependencies: `fastify`, `zod`, `react`, `react-dom`.
   the `Host` header, so it is meant for a local machine, not a server.
 - No delete endpoint, and create is not idempotent: a retry after a lost
   response can create a duplicate.
-- The UI list loads the 100 most recently changed designs and says how many
-  exist in total. There is no paging control yet.
+- The list has no total count. Paging uses a cursor on (updated_at, id), so
+  each page is one index read and costs the same at any depth (measured about
+  0.4 ms per page of 100 at 100,000 designs). If a design is edited while
+  someone is paging, it moves to the top; the UI skips ids it already shows.
 - The web UI has no automated tests; it was checked by hand (desktop and 375 px
   phone width). Server tests cover validation, geometry, drawing, API and the
   database.

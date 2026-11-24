@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { CAPACITIES_KG, craneParamsSchema, deriveGeometry, LIMITS, REFERENCE } from "../domain/crane.ts";
 import { renderDrawing } from "../domain/drawing.ts";
-import type { DesignRepository, StoredDesign } from "../db/designs.ts";
+import type { DesignRepository, ListCursor, StoredDesign } from "../db/designs.ts";
 import { ApiError, parseOrThrow } from "../errors.ts";
 
 const nameSchema = z
@@ -27,15 +27,39 @@ const previewBody = z.strictObject({ params: craneParamsSchema });
 const idParams = z.object({
   id: z.string().regex(/^[1-9][0-9]{0,14}$/, { error: "Design id must be a positive whole number" }).transform(Number),
 });
-const pageNumber = (min: number, max: number, label: string) =>
-  z
-    .string()
-    .regex(/^[0-9]{1,7}$/, { error: `${label} must be a whole number` })
-    .transform(Number)
-    .pipe(z.int().min(min, { error: `${label} must be at least ${min}` }).max(max, { error: `${label} must be at most ${max}` }));
-const listQuery = z.object({
-  limit: pageNumber(1, 100, "limit").optional(),
-  offset: pageNumber(0, 1_000_000, "offset").optional(),
+const limitParam = z
+  .string()
+  .regex(/^[0-9]{1,3}$/, { error: "limit must be a whole number" })
+  .transform(Number)
+  .pipe(z.int().min(1, { error: "limit must be at least 1" }).max(100, { error: "limit must be at most 100" }));
+
+/** Cursor = base64url("<updatedAt ISO>|<id>"). Opaque to clients; strictly checked here. */
+const CURSOR_BODY = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\|([1-9][0-9]{0,14})$/;
+
+export function encodeCursor(c: ListCursor): string {
+  return Buffer.from(`${c.updatedAt}|${c.id}`).toString("base64url");
+}
+
+function decodeCursor(raw: string): ListCursor | undefined {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(raw)) return undefined;
+  const m = CURSOR_BODY.exec(Buffer.from(raw, "base64url").toString("utf8"));
+  if (!m) return undefined;
+  const [, updatedAt, id] = m as unknown as [string, string, string];
+  // Rejects impossible dates like month 13 that still match the pattern.
+  const t = Date.parse(updatedAt);
+  if (Number.isNaN(t) || new Date(t).toISOString() !== updatedAt) return undefined;
+  return { updatedAt, id: Number(id) };
+}
+
+const cursorParam = z
+  .string()
+  .refine((s) => decodeCursor(s) !== undefined, { error: "cursor is not valid; use nextCursor from a previous page" })
+  .transform((s) => decodeCursor(s) as ListCursor);
+
+// Strict: a removed or misspelled parameter (e.g. the old "offset") fails loudly instead of being ignored.
+const listQuery = z.strictObject({
+  limit: limitParam.optional(),
+  cursor: cursorParam.optional(),
 });
 
 function withGeometry(d: StoredDesign) {
@@ -56,8 +80,8 @@ export function registerDesignRoutes(app: FastifyInstance, repo: DesignRepositor
 
   app.get("/api/designs", async (req) => {
     const q = parseOrThrow(listQuery, req.query);
-    const { items, total } = repo.list(q.limit ?? 50, q.offset ?? 0);
-    return { items, total };
+    const { items, next } = repo.list(q.limit ?? 50, q.cursor);
+    return { items, nextCursor: next ? encodeCursor(next) : null };
   });
 
   app.post("/api/designs", async (req, reply) => {

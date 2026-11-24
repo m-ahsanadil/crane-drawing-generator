@@ -68,7 +68,8 @@ export function App() {
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [designs, setDesigns] = useState<DesignSummary[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-  const [designTotal, setDesignTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const [values, setValues] = useState<FormValues>(DEFAULTS);
   const [saved, setSaved] = useState<Saved | null>(null);
@@ -83,16 +84,36 @@ export function App() {
 
   const dirty = saved ? !sameValues(values, saved.values) : true;
 
+  /** Reloads the list from the first page (after a save, the edited design moves to the top). */
   const refreshList = useCallback(async () => {
     try {
       const page = await api.list();
       setDesigns(page.items);
-      setDesignTotal(page.total);
+      setNextCursor(page.nextCursor);
       setListError(null);
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Could not load designs");
     }
   }, []);
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.list(nextCursor);
+      // A design edited elsewhere between pages can move; skip ids already shown.
+      setDesigns((prev) => {
+        const shown = new Set((prev ?? []).map((d) => d.id));
+        return [...(prev ?? []), ...page.items.filter((d) => !shown.has(d.id))];
+      });
+      setNextCursor(page.nextCursor);
+      setListError(null);
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "Could not load more designs");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     api.options().then(setOptions, (err: unknown) =>
@@ -262,11 +283,6 @@ export function App() {
         )}
         {!listError && designs === null && <p className="muted">Loading…</p>}
         {designs?.length === 0 && <p className="muted">No saved designs yet.</p>}
-        {designs && designTotal > designs.length && (
-          <p className="muted">
-            Showing the {designs.length} most recently changed of {designTotal} designs.
-          </p>
-        )}
         {designs && designs.length > 0 && (
           <ul className="designs">
             {designs.map((d) => (
@@ -285,6 +301,11 @@ export function App() {
               </li>
             ))}
           </ul>
+        )}
+        {nextCursor && (
+          <button type="button" className="load-more" onClick={() => void loadMore()} disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
         )}
       </aside>
 

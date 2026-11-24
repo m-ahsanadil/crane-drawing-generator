@@ -40,6 +40,12 @@ function toDesign(r: Row): StoredDesign {
   };
 }
 
+/** Position after the last row of a page: the sort key (updated_at, id). */
+export interface ListCursor {
+  updatedAt: string;
+  id: number;
+}
+
 export type UpdateResult =
   | { kind: "updated"; design: StoredDesign }
   | { kind: "not_found" }
@@ -71,12 +77,24 @@ export class DesignRepository {
     return row ? toDesign(row) : undefined;
   }
 
-  list(limit: number, offset: number): { items: StoredDesign[]; total: number } {
-    const rows = this.db
-      .prepare(`SELECT ${COLUMNS} FROM designs ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`)
-      .all(limit, offset) as unknown as Row[];
-    const { total } = this.db.prepare("SELECT COUNT(*) AS total FROM designs").get() as { total: number };
-    return { items: rows.map(toDesign), total };
+  /**
+   * Keyset pagination, newest change first. Each page is one index range read
+   * of limit + 1 rows, so its cost does not grow with table size or page depth
+   * (no COUNT, no OFFSET). The extra row only tells whether another page exists.
+   */
+  list(limit: number, after?: ListCursor): { items: StoredDesign[]; next: ListCursor | undefined } {
+    const order = `ORDER BY updated_at DESC, id DESC LIMIT ?`;
+    const rows = (
+      after
+        ? this.db
+            .prepare(`SELECT ${COLUMNS} FROM designs WHERE (updated_at, id) < (?, ?) ${order}`)
+            .all(after.updatedAt, after.id, limit + 1)
+        : this.db.prepare(`SELECT ${COLUMNS} FROM designs ${order}`).all(limit + 1)
+    ) as unknown as Row[];
+    const items = rows.slice(0, limit).map(toDesign);
+    const last = items.at(-1);
+    const next = rows.length > limit && last ? { updatedAt: last.updatedAt, id: last.id } : undefined;
+    return { items, next };
   }
 
   /**

@@ -70,7 +70,11 @@ async function request<T>(method: string, url: string, body?: unknown, signal?: 
 
 export const api = {
   options: () => request<CraneOptions>("GET", "/api/crane-options"),
-  list: () => request<{ items: DesignSummary[]; total: number }>("GET", "/api/designs?limit=100"),
+  list: (cursor?: string) =>
+    request<{ items: DesignSummary[]; nextCursor: string | null }>(
+      "GET",
+      `/api/designs?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    ),
   get: (id: number) => request<Design>("GET", `/api/designs/${id}`),
   create: (name: string, params: CraneParams) => request<Design>("POST", "/api/designs", { name, params }),
   update: (id: number, version: number, name: string, params: CraneParams) =>
