@@ -68,6 +68,7 @@ export function App() {
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [designs, setDesigns] = useState<DesignSummary[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [designTotal, setDesignTotal] = useState(0);
 
   const [values, setValues] = useState<FormValues>(DEFAULTS);
   const [saved, setSaved] = useState<Saved | null>(null);
@@ -84,7 +85,9 @@ export function App() {
 
   const refreshList = useCallback(async () => {
     try {
-      setDesigns((await api.list()).items);
+      const page = await api.list();
+      setDesigns(page.items);
+      setDesignTotal(page.total);
       setListError(null);
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Could not load designs");
@@ -203,9 +206,15 @@ export function App() {
     if (key === "spanMm") return `${l.spanMm.min}–${l.spanMm.max} mm, rail centre to rail centre`;
     if (key === "railHeightMm") return `${l.railHeightMm.min}–${l.railHeightMm.max} mm, floor to top of runway rail`;
     if (key === "liftingHeightMm") {
+      // Number("") is 0, so only show a maximum when the rail height itself is a valid value.
       const rail = Number(values.railHeightMm);
-      const max = Number.isFinite(rail) ? ` to ${rail - options.hookTopBelowRailMm}` : "";
-      return `${l.liftingHeightMm.min}${max} mm, vertical hook travel`;
+      const railValid =
+        values.railHeightMm.trim() !== "" &&
+        Number.isInteger(rail) &&
+        rail >= l.railHeightMm.min &&
+        rail <= l.railHeightMm.max;
+      const range = railValid ? `${l.liftingHeightMm.min}–${rail - options.hookTopBelowRailMm}` : `at least ${l.liftingHeightMm.min}`;
+      return `${range} mm, vertical hook travel`;
     }
     return "";
   };
@@ -253,6 +262,11 @@ export function App() {
         )}
         {!listError && designs === null && <p className="muted">Loading…</p>}
         {designs?.length === 0 && <p className="muted">No saved designs yet.</p>}
+        {designs && designTotal > designs.length && (
+          <p className="muted">
+            Showing the {designs.length} most recently changed of {designTotal} designs.
+          </p>
+        )}
         {designs && designs.length > 0 && (
           <ul className="designs">
             {designs.map((d) => (
