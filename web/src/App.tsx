@@ -115,6 +115,25 @@ export function App() {
     }
   }
 
+  /**
+   * Opens the drawing in a new tab inside a tiny viewer page instead of opening
+   * the SVG blob directly. A blob: SVG opened as a document runs in this app's
+   * origin and could run script; inside <img> an SVG never runs script, and the
+   * viewer's CSP allows nothing but the image.
+   */
+  function openFullSize() {
+    if (!previewUrl) return;
+    const html =
+      `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+      `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob:; style-src 'unsafe-inline'">` +
+      `<title>Crane drawing</title></head><body style="margin:0;background:#fff">` +
+      `<img src="${previewUrl}" alt="Crane drawing" style="display:block;width:100%;height:auto"></body></html>`;
+    const viewerUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    window.open(viewerUrl, "_blank", "noopener");
+    // The new tab has loaded it by then; free the memory.
+    setTimeout(() => URL.revokeObjectURL(viewerUrl), 60_000);
+  }
+
   useEffect(() => {
     api.options().then(setOptions, (err: unknown) =>
       setOptionsError(err instanceof Error ? err.message : "Could not load options"),
@@ -393,9 +412,9 @@ export function App() {
                 className={previewState === "ok" ? "" : "stale"}
               />
               <p>
-                <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                <button type="button" onClick={openFullSize}>
                   Open full size
-                </a>
+                </button>
               </p>
             </>
           ) : (
