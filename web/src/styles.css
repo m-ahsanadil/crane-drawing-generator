@@ -30,16 +30,60 @@ h2 {
   margin: 0 0 12px;
 }
 
+/*
+ * One column by default: header, form, drawing, saved list - the same order as the DOM,
+ * so Tab order matches what is seen. From 1200 px the list moves to a right-hand column.
+ * The drawing always gets the full width of <main>, because its labels are the main output.
+ */
 .layout {
+  position: relative;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "header header"
-    "aside main";
+    "header"
+    "main"
+    "aside";
   gap: 16px;
   padding: 16px;
-  max-width: 1600px;
+  max-width: 1920px;
   margin: 0 auto;
+}
+
+@media (min-width: 1200px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-areas:
+      "header header"
+      "main aside";
+  }
+
+  /* The list stays in view and scrolls on its own instead of making the page very long. */
+  aside {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+  }
+}
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -100px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+}
+
+.skip-link:focus {
+  top: 8px;
 }
 
 header {
@@ -58,9 +102,21 @@ aside {
 main {
   grid-area: main;
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+/* Fields sit side by side when there is room, and stack on narrow screens. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.field-name {
+  grid-column: 1 / -1;
 }
 
 aside,
@@ -94,9 +150,18 @@ form,
   gap: 2px;
 }
 
+/* The open design also gets a thick left border: a cue that survives forced colours, not colour alone. */
 .designs button[aria-current="true"] {
   border-color: var(--accent);
+  border-left-width: 5px;
   background: #eef3fd;
+}
+
+@media (forced-colors: active) {
+  .designs button[aria-current="true"] {
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
 }
 
 .load-more {
@@ -113,7 +178,7 @@ form,
 .field {
   display: grid;
   gap: 4px;
-  margin-bottom: 12px;
+  align-content: start;
 }
 
 label {
@@ -198,6 +263,13 @@ button.primary {
   margin: 12px 0 0;
 }
 
+/* Messages can repeat a long unbroken design name; let it wrap instead of widening the page. */
+.status,
+form small,
+.preview h2 {
+  overflow-wrap: anywhere;
+}
+
 .status.success {
   color: var(--success);
 }
@@ -228,18 +300,12 @@ select {
   min-width: 0;
 }
 
-@media (max-width: 1100px) {
-  main {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 760px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "header"
-      "main"
-      "aside";
+/* Touch screens: at least 44 px tall targets (Apple / Material guidance). */
+@media (pointer: coarse) {
+  button,
+  .button,
+  input,
+  select {
+    min-height: 44px;
   }
 }

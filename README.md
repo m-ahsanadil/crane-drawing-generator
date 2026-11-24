@@ -148,9 +148,15 @@ Runtime dependencies: `fastify`, `zod`, `react`, `react-dom`.
   someone is paging, it moves to the top: the UI skips ids it already shows,
   and a design that was not loaded yet appears only after the list reloads
   (for example after the next save).
-- The web UI has no automated tests; it was checked by hand (desktop and 375 px
-  phone width). Server tests cover validation, geometry, drawing, API and the
-  database.
+- The web UI has no automated tests. It was checked in headless Edge driven
+  through the DevTools protocol: no horizontal overflow from 320 to 1920 px,
+  Tab order equal to the visual order (skip links first), touch targets at
+  least 44 px on touch screens, and the open design still marked in Windows
+  forced-colours mode. It was not checked on a real phone or with a screen
+  reader. Server tests cover validation, geometry, drawing, API and the database.
+- The drawing in the page is a preview: its labels are small, especially on
+  phones. "Open full size" shows it at its real 1600 px width (scroll to pan,
+  with a "Fit to window" option), and "Download SVG" gives the file.
 - At extreme inputs (for example span 5000 with rail height 20000) some
   drawing labels can touch the walls.
 - Only Node 24 on Windows 11 was tested. Node 22 will not work (`node:sqlite`

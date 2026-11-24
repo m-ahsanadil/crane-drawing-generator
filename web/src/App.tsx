@@ -81,6 +81,8 @@ export function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<"loading" | "ok" | "invalid" | "error">("loading");
   const urlRef = useRef<string | null>(null);
+  /** SVG text of the current preview, for the full-size viewer. */
+  const svgRef = useRef<string | null>(null);
 
   const dirty = saved ? !sameValues(values, saved.values) : true;
 
@@ -122,16 +124,28 @@ export function App() {
    * viewer's CSP allows nothing but the image.
    */
   function openFullSize() {
-    if (!previewUrl) return;
+    if (!svgRef.current) return;
+    // The SVG is embedded as a data: URL, so the viewer keeps working after the preview
+    // changes or the tab is reloaded (a revoked blob: URL would show a broken image).
+    const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgRef.current)}`;
+    // Natural 1600 px width with scrolling, so labels are readable on any screen; a CSS-only
+    // checkbox (no script, the CSP allows none) switches to "fit to window".
     const html =
       `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
-      `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob:; style-src 'unsafe-inline'">` +
-      `<title>Crane drawing</title></head><body style="margin:0;background:#fff">` +
-      `<img src="${previewUrl}" alt="Crane drawing" style="display:block;width:100%;height:auto"></body></html>`;
+      `<meta name="viewport" content="width=device-width, initial-scale=1">` +
+      `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">` +
+      `<title>Crane drawing</title><style>` +
+      `body{margin:0;background:#fff;font:16px system-ui,sans-serif}` +
+      `label{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 12px;cursor:pointer}` +
+      `input{width:20px;height:20px}img{display:block;width:1600px;max-width:none;height:auto}` +
+      `#fit:checked~img{width:100%}` +
+      `</style></head><body>` +
+      `<input type="checkbox" id="fit"><label for="fit">Fit to window</label>` +
+      `<img src="${src}" alt="Dimensioned drawing of the crane: front elevation, plan view and technical data" width="1600" height="1000">` +
+      `</body></html>`;
+    // Not revoked on a timer: the tab may be reloaded later. The browser frees it when this app's page unloads.
     const viewerUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
     window.open(viewerUrl, "_blank", "noopener");
-    // The new tab has loaded it by then; free the memory.
-    setTimeout(() => URL.revokeObjectURL(viewerUrl), 60_000);
   }
 
   useEffect(() => {
@@ -152,6 +166,7 @@ export function App() {
         const url = URL.createObjectURL(new Blob([res.svg], { type: "image/svg+xml" }));
         if (urlRef.current) URL.revokeObjectURL(urlRef.current);
         urlRef.current = url;
+        svgRef.current = res.svg;
         setPreviewUrl(url);
         setPreviewState("ok");
         setFieldErrors(keepNameError);
@@ -283,95 +298,65 @@ export function App() {
 
   return (
     <div className="layout">
+      {/* Skip links: the first Tab stops; hidden until focused. */}
+      <a className="skip-link" href="#design-form">
+        Skip to design form
+      </a>
+      <a className="skip-link" href="#saved-designs">
+        Skip to saved designs
+      </a>
       <header>
         <h1>Crane Drawing Generator</h1>
         <p>Single-girder overhead crane. Values marked * on the drawing are estimates. Not for construction.</p>
       </header>
 
-      <aside aria-labelledby="saved-heading">
-        <div className="aside-head">
-          <h2 id="saved-heading">Saved designs</h2>
-          <button type="button" onClick={newDesign} disabled={busy}>
-            New
-          </button>
-        </div>
-        {listError && (
-          <p className="error" role="alert">
-            {listError} <button type="button" onClick={() => void refreshList()}>Retry</button>
-          </p>
-        )}
-        {!listError && designs === null && <p className="muted">Loading…</p>}
-        {designs?.length === 0 && <p className="muted">No saved designs yet.</p>}
-        {designs && designs.length > 0 && (
-          <ul className="designs">
-            {designs.map((d) => (
-              <li key={d.id}>
-                <button
-                  type="button"
-                  onClick={() => void openDesign(d.id)}
-                  disabled={busy}
-                  aria-current={saved?.id === d.id ? "true" : undefined}
-                >
-                  <span className="design-name">{d.name}</span>
-                  <span className="muted">
-                    {d.params.capacityKg / 1000} t · {d.params.spanMm} mm span · v{d.version}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {nextCursor && (
-          <button type="button" className="load-more" onClick={() => void loadMore()} disabled={loadingMore}>
-            {loadingMore ? "Loading…" : "Load more"}
-          </button>
-        )}
-      </aside>
-
+      {/* DOM order = visual order at every width (form, drawing, then the list), so Tab follows what the eye sees. */}
       <main>
-        <form onSubmit={(e) => void save(e)} noValidate>
+        <form id="design-form" tabIndex={-1} onSubmit={(e) => void save(e)} noValidate>
           <h2>{saved ? `Editing design #${saved.id}` : "New design"}</h2>
           {optionsError && (
             <p className="error" role="alert">
               {optionsError}
             </p>
           )}
-          <div className="field">
-            <label htmlFor="name">Design name</label>
-            <input
-              id="name"
-              value={values.name}
-              // No maxLength: the browser counts UTF-16 units (an emoji counts 2), the server counts
-              // characters. The server's 100-character rule is the only one, shown as a field error.
-              onChange={(e) => setField("name", e.target.value)}
-              aria-invalid={fieldErrors.name ? true : undefined}
-              aria-describedby={fieldErrors.name ? "name-error" : undefined}
-            />
-            {fieldErrors.name && (
-              <small id="name-error" className="error">
-                {fieldErrors.name}
-              </small>
-            )}
+          <div className="fields">
+            <div className="field field-name">
+              <label htmlFor="name">Design name</label>
+              <input
+                id="name"
+                value={values.name}
+                // No maxLength: the browser counts UTF-16 units (an emoji counts 2), the server counts
+                // characters. The server's 100-character rule is the only one, shown as a field error.
+                onChange={(e) => setField("name", e.target.value)}
+                aria-invalid={fieldErrors.name ? true : undefined}
+                aria-describedby={fieldErrors.name ? "name-error" : undefined}
+              />
+              {fieldErrors.name && (
+                <small id="name-error" className="error">
+                  {fieldErrors.name}
+                </small>
+              )}
+            </div>
+            <div className="field">
+              <label htmlFor="capacityKg">Rated load</label>
+              <select
+                id="capacityKg"
+                value={values.capacityKg}
+                onChange={(e) => setField("capacityKg", e.target.value)}
+                aria-invalid={fieldErrors.capacityKg ? true : undefined}
+              >
+                {(options?.capacitiesKg ?? [Number(DEFAULTS.capacityKg)]).map((kg) => (
+                  <option key={kg} value={kg}>
+                    {kg / 1000} t
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.capacityKg && <small className="error">{fieldErrors.capacityKg}</small>}
+            </div>
+            {numberField("spanMm", "Span (mm)")}
+            {numberField("railHeightMm", "Rail height (mm)")}
+            {numberField("liftingHeightMm", "Lifting height (mm)")}
           </div>
-          <div className="field">
-            <label htmlFor="capacityKg">Rated load</label>
-            <select
-              id="capacityKg"
-              value={values.capacityKg}
-              onChange={(e) => setField("capacityKg", e.target.value)}
-              aria-invalid={fieldErrors.capacityKg ? true : undefined}
-            >
-              {(options?.capacitiesKg ?? [Number(DEFAULTS.capacityKg)]).map((kg) => (
-                <option key={kg} value={kg}>
-                  {kg / 1000} t
-                </option>
-              ))}
-            </select>
-            {fieldErrors.capacityKg && <small className="error">{fieldErrors.capacityKg}</small>}
-          </div>
-          {numberField("spanMm", "Span (mm)")}
-          {numberField("railHeightMm", "Rail height (mm)")}
-          {numberField("liftingHeightMm", "Lifting height (mm)")}
 
           <div className="actions">
             <button type="submit" className="primary" disabled={busy || (saved !== null && !dirty)}>
@@ -423,6 +408,46 @@ export function App() {
           )}
         </section>
       </main>
+
+      <aside id="saved-designs" tabIndex={-1} aria-labelledby="saved-heading">
+        <div className="aside-head">
+          <h2 id="saved-heading">Saved designs</h2>
+          <button type="button" onClick={newDesign} disabled={busy}>
+            New
+          </button>
+        </div>
+        {listError && (
+          <p className="error" role="alert">
+            {listError} <button type="button" onClick={() => void refreshList()}>Retry</button>
+          </p>
+        )}
+        {!listError && designs === null && <p className="muted">Loading…</p>}
+        {designs?.length === 0 && <p className="muted">No saved designs yet.</p>}
+        {designs && designs.length > 0 && (
+          <ul className="designs">
+            {designs.map((d) => (
+              <li key={d.id}>
+                <button
+                  type="button"
+                  onClick={() => void openDesign(d.id)}
+                  disabled={busy}
+                  aria-current={saved?.id === d.id ? "true" : undefined}
+                >
+                  <span className="design-name">{d.name}</span>
+                  <span className="muted">
+                    {d.params.capacityKg / 1000} t · {d.params.spanMm} mm span · v{d.version}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {nextCursor && (
+          <button type="button" className="load-more" onClick={() => void loadMore()} disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+        )}
+      </aside>
     </div>
   );
 }
