@@ -5,10 +5,13 @@ import { buildApp } from "../src/app.ts";
 
 const params = { capacityKg: 10_000, spanMm: 25_000, railHeightMm: 8_321, liftingHeightMm: 7_900 };
 
+// app.inject() sends "Host: localhost:80" by default.
+const TEST_HOSTS = ["localhost:80"];
+
 let app: FastifyInstance;
 
 beforeEach(async () => {
-  app = buildApp({ dbPath: ":memory:", logger: false });
+  app = buildApp({ dbPath: ":memory:", logger: false, allowedHosts: TEST_HOSTS });
   await app.ready();
 });
 
@@ -24,6 +27,28 @@ test("health check responds", async () => {
   const res = await app.inject({ method: "GET", url: "/api/health" });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.json(), { status: "ok" });
+});
+
+test("requests with a foreign Host header are refused (DNS rebinding)", async () => {
+  // Found by security review: a page whose domain re-resolves to 127.0.0.1 could read and write designs.
+  // (A missing Host cannot be tested here: inject() fills in "localhost:80" when it is empty.)
+  for (const host of ["evil.example", "evil.example:80", "localhost:81", "127.0.0.1:80", "localhost"]) {
+    const read = await app.inject({ method: "GET", url: "/api/designs", headers: { host } });
+    assert.equal(read.statusCode, 403, `GET host=${host}`);
+    assert.equal(read.json().error.code, "HOST_NOT_ALLOWED", `GET host=${host}`);
+    const write = await app.inject({
+      method: "POST",
+      url: "/api/designs",
+      headers: { host },
+      payload: { name: "x", params },
+    });
+    assert.equal(write.statusCode, 403, `POST host=${host}`);
+  }
+  const list = await app.inject({ method: "GET", url: "/api/designs" });
+  assert.equal(list.json().items.length, 0);
+  // Host names are case-insensitive.
+  const upper = await app.inject({ method: "GET", url: "/api/health", headers: { host: "LOCALHOST:80" } });
+  assert.equal(upper.statusCode, 200);
 });
 
 test("crane options expose the server's own limits so the UI does not duplicate them", async () => {
@@ -196,6 +221,29 @@ test("name with control characters or broken Unicode is rejected with 400, never
   assert.equal((await create("Kran Halle 2 ü الرافعة \u{1F3D7}")).statusCode, 201);
 });
 
+test("names with invisible or format characters are rejected (display spoofing)", async () => {
+  // Found by security review: a bidi override showed "\u202Eexe.gnp" as "png.exe"; zero-width chars make look-alike names.
+  const cases: [string, string][] = [
+    ["bidi override", "\u202Eexe.gnp"],
+    ["zero-width space", "Ba\u200By"],
+    ["zero-width joiner", "a\u200Db"],
+    ["line separator", "a\u2028b"],
+    ["paragraph separator", "a\u2029b"],
+    ["tag character", "a\u{E0041}b"],
+    ["noncharacter U+FFFF", "a\uFFFFb"],
+    ["noncharacter U+FDD0", "a\uFDD0b"],
+    // A leading BOM is whitespace to trim(), so test it inside the name.
+    ["byte order mark", "na\uFEFFme"],
+  ];
+  for (const [label, name] of cases) {
+    const res = await create(name);
+    assert.equal(res.statusCode, 400, label);
+    assert.equal(res.json().error.details[0].path, "name", label);
+  }
+  const list = await app.inject({ method: "GET", url: "/api/designs" });
+  assert.equal(list.json().items.length, 0);
+});
+
 test("update also rejects control characters in the name", async () => {
   await create();
   const res = await app.inject({ method: "PUT", url: "/api/designs/1", payload: { name: "\u0000x", params, version: 1 } });
@@ -241,7 +289,7 @@ test("malformed JSON, missing body and oversized body get stable error codes", a
 });
 
 test("unexpected errors return 500 without leaking internals", async () => {
-  const local = buildApp({ dbPath: ":memory:", logger: false });
+  const local = buildApp({ dbPath: ":memory:", logger: false, allowedHosts: TEST_HOSTS });
   local.get("/api/boom", async () => {
     throw new Error("SQLITE_CORRUPT at C:\\secret\\path.db");
   });

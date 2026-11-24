@@ -10,9 +10,11 @@ const nameSchema = z
   .trim()
   .min(1, { error: "Name is required" })
   .max(100, { error: "Name must be at most 100 characters" })
-  // Control characters break SQLite length() and XML; lone surrogates get silently replaced on storage.
-  .refine((s) => s.isWellFormed() && !/\p{Cc}/u.test(s), {
-    error: "Name contains control characters or invalid Unicode",
+  // Cc: control characters break SQLite length() and XML. Lone surrogates get silently replaced on storage.
+  // Cf/Zl/Zp/noncharacters: invisible or direction-changing characters allow look-alike names
+  // (a bidi override shows "exe.gnp" as "png.exe"). Trade-off: emoji joined with ZWJ are refused too.
+  .refine((s) => s.isWellFormed() && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Noncharacter_Code_Point}]/u.test(s), {
+    error: "Name contains control, invisible or invalid Unicode characters",
   });
 
 const createBody = z.strictObject({ name: nameSchema, params: craneParamsSchema });

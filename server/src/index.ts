@@ -21,7 +21,8 @@ const rawDbPath = process.env.DB_PATH || resolve(here, "../data/designs.db");
 const dbPath = rawDbPath === ":memory:" ? rawDbPath : resolve(rawDbPath);
 if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
 
-const app = buildApp({ dbPath });
+// Direct calls and the Vite proxy (changeOrigin) both arrive with one of these Host values.
+const app = buildApp({ dbPath, allowedHosts: [`127.0.0.1:${port}`, `localhost:${port}`] });
 
 // Local tool: listen on loopback only, not on every network interface.
 app.listen({ port, host: "127.0.0.1" }).catch((err: unknown) => {

@@ -100,8 +100,15 @@ All bodies are JSON. Every error has the same shape:
 | `GET /api/designs/:id/drawing.svg` | Download the drawing | 200 |
 
 Error codes: `VALIDATION_FAILED` (400), `MALFORMED_REQUEST` (400),
-`DESIGN_NOT_FOUND` (404), `ROUTE_NOT_FOUND` (404), `VERSION_CONFLICT` (409),
-`PAYLOAD_TOO_LARGE` (413), `UNSUPPORTED_MEDIA_TYPE` (415), `INTERNAL_ERROR` (500).
+`HOST_NOT_ALLOWED` (403), `DESIGN_NOT_FOUND` (404), `ROUTE_NOT_FOUND` (404),
+`VERSION_CONFLICT` (409), `PAYLOAD_TOO_LARGE` (413), `UNSUPPORTED_MEDIA_TYPE` (415),
+`INTERNAL_ERROR` (500).
+
+**Local-only safety.** The API listens on `127.0.0.1` and answers only requests
+whose `Host` is `127.0.0.1:<port>` or `localhost:<port>` (403 otherwise), which
+blocks DNS-rebinding pages. It accepts JSON bodies only (415 otherwise), so a
+cross-site form cannot create data. Design names must be plain visible text:
+control, invisible and direction-changing characters are refused.
 
 **Edits use optimistic concurrency.** A `PUT` must send the version it loaded.
 If someone saved in between, the server answers 409 instead of overwriting
@@ -128,8 +135,9 @@ Runtime dependencies: `fastify`, `zod`, `react`, `react-dom`.
   changes girder depth, end carriage or hoist size, so none was invented.
 - All scaling comes from **one** reference drawing; see the table above.
 - No structural, deflection, wheel load or cost calculation.
-- Single user, no login. The API listens on `127.0.0.1` only and does not check
-  the `Host` header, so it is meant for a local machine, not a server.
+- Single user, no login. It is meant for a local machine, not a server.
+- Emoji built with a zero-width joiner (for example family emoji) are refused in
+  design names, because the joiner is an invisible character. Single emoji work.
 - No delete endpoint, and create is not idempotent: a retry after a lost
   response can create a duplicate.
 - The list has no total count. Paging uses a cursor on (updated_at, id), so

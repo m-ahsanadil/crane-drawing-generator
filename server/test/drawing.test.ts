@@ -48,8 +48,8 @@ test("escapes the user-supplied design name", () => {
 
 test("output stays valid XML even if a stored name holds illegal characters", () => {
   // Defence in depth: validation rejects these, but rows written before that rule must not break the SVG.
-  const svg = render(params, "a\u0000b\u0001c\uD800d￾e");
-  assert.ok(!/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/.test(svg), "XML-illegal character in SVG");
+  const svg = render(params, "a\u0000b\u0001c\uD800d\uFFFEe");
+  assert.ok(!/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/.test(svg), "XML-illegal character in SVG");
   assert.ok(svg.isWellFormed(), "lone surrogate in SVG");
 });
 

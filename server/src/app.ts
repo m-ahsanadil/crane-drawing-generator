@@ -6,6 +6,12 @@ import { registerDesignRoutes } from "./routes/designs.ts";
 
 export interface AppOptions {
   dbPath: string;
+  /**
+   * Exact Host header values ("host:port") this server answers. Required, with no
+   * default, so a missing setting fails closed. Blocks DNS rebinding: a hostile page
+   * whose domain re-resolves to 127.0.0.1 still sends its own name as Host.
+   */
+  allowedHosts: readonly string[];
   logger?: FastifyServerOptions["logger"];
 }
 
@@ -30,8 +36,17 @@ export function buildApp(opts: AppOptions) {
   const app = Fastify({ logger: opts.logger ?? true, bodyLimit: BODY_LIMIT_BYTES });
   // JSON only: without this, Fastify's built-in text/plain parser turns a text body into a string.
   app.removeContentTypeParser("text/plain");
+  if (opts.allowedHosts.length === 0) throw new Error("allowedHosts must name at least one host:port");
+  const allowedHosts = new Set(opts.allowedHosts.map((h) => h.toLowerCase()));
   const db = openDatabase(opts.dbPath);
   const repo = new DesignRepository(db);
+
+  // Runs before the body is parsed, so a refused request costs almost nothing.
+  app.addHook("onRequest", async (req) => {
+    if (!allowedHosts.has((req.headers.host ?? "").toLowerCase())) {
+      throw new ApiError(403, "HOST_NOT_ALLOWED", "Host not allowed. Open the app at http://127.0.0.1:5173");
+    }
+  });
 
   app.addHook("onSend", async (_req, reply) => {
     reply.header("x-content-type-options", "nosniff");

@@ -25,7 +25,7 @@ const CHAR_W = 7; // approximate width of a 13px character, used to decide label
 const esc = (s: string) =>
   s
     .toWellFormed()
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const n = (v: number) => String(Math.round(v * 10) / 10);
 const tonnes = (kg: number) => `${kg / 1000} t`;

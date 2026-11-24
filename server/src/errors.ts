@@ -9,6 +9,7 @@ export type ErrorCode =
   | "DESIGN_NOT_FOUND"
   | "ROUTE_NOT_FOUND"
   | "VERSION_CONFLICT"
+  | "HOST_NOT_ALLOWED"
   | "BAD_REQUEST"
   | "INTERNAL_ERROR";
 
