@@ -135,7 +135,9 @@ Runtime dependencies: `fastify`, `zod`, `react`, `react-dom`.
 - The list has no total count. Paging uses a cursor on (updated_at, id), so
   each page is one index read and costs the same at any depth (measured about
   0.4 ms per page of 100 at 100,000 designs). If a design is edited while
-  someone is paging, it moves to the top; the UI skips ids it already shows.
+  someone is paging, it moves to the top: the UI skips ids it already shows,
+  and a design that was not loaded yet appears only after the list reloads
+  (for example after the next save).
 - The web UI has no automated tests; it was checked by hand (desktop and 375 px
   phone width). Server tests cover validation, geometry, drawing, API and the
   database.
