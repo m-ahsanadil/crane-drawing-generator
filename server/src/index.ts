@@ -5,16 +5,17 @@ import { buildApp } from "./app.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+/** API_PORT is shared with web/vite.config.ts so the dev proxy always points at this server. */
 function readPort(raw: string | undefined): number {
-  if (raw === undefined) return 3001;
+  if (raw === undefined || raw === "") return 8787;
   const port = Number(raw);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error(`PORT must be a whole number between 1 and 65535, got "${raw}"`);
+    throw new Error(`API_PORT must be a whole number between 1 and 65535, got "${raw}"`);
   }
   return port;
 }
 
-const port = readPort(process.env.PORT);
+const port = readPort(process.env.API_PORT);
 const dbPath = resolve(process.env.DB_PATH ?? resolve(here, "../data/designs.db"));
 mkdirSync(dirname(dbPath), { recursive: true });
 
