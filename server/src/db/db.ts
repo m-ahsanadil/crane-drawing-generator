@@ -22,13 +22,24 @@ const MIGRATIONS: string[] = [
 export function openDatabase(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
-  if (path !== ":memory:") db.exec("PRAGMA journal_mode = WAL;");
-  migrate(db);
+  try {
+    if (path !== ":memory:") db.exec("PRAGMA journal_mode = WAL;");
+    migrate(db);
+  } catch (err) {
+    db.close();
+    throw err;
+  }
   return db;
 }
 
 function migrate(db: DatabaseSync) {
   const row = db.prepare("PRAGMA user_version").get() as { user_version: number };
+  // A newer schema may have columns or rules this code does not know; writing to it could corrupt data.
+  if (row.user_version > MIGRATIONS.length) {
+    throw new Error(
+      `Database schema version ${row.user_version} is newer than this app supports (${MIGRATIONS.length}). Use a newer app version or another DB_PATH.`,
+    );
+  }
   for (let i = row.user_version; i < MIGRATIONS.length; i++) {
     db.exec("BEGIN");
     try {

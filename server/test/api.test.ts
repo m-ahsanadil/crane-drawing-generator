@@ -149,6 +149,43 @@ test("name is required, trimmed and length-limited", async () => {
   assert.equal((await create("x".repeat(100))).statusCode, 201);
 });
 
+test("name with control characters or broken Unicode is rejected with 400, never stored", async () => {
+  // Found by adversarial review: NUL first gave 500, embedded NUL broke the SVG, a lone surrogate was silently changed.
+  for (const name of ["\u0000abc", "ab\u0000cd", "a\u0001\u001bb", "tab\there", "del\u007f", "x\uD800y", "y\uDC00"]) {
+    const res = await create(name);
+    assert.equal(res.statusCode, 400, JSON.stringify(name));
+    assert.equal(res.json().error.code, "VALIDATION_FAILED", JSON.stringify(name));
+    assert.equal(res.json().error.details[0].path, "name", JSON.stringify(name));
+  }
+  const list = await app.inject({ method: "GET", url: "/api/designs" });
+  assert.equal(list.json().total, 0);
+  // Normal non-ASCII names still work.
+  assert.equal((await create("Kran Halle 2 ü الرافعة \u{1F3D7}")).statusCode, 201);
+});
+
+test("update also rejects control characters in the name", async () => {
+  await create();
+  const res = await app.inject({ method: "PUT", url: "/api/designs/1", payload: { name: "\u0000x", params, version: 1 } });
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.json().error.code, "VALIDATION_FAILED");
+});
+
+test("offset accepts its declared maximum", async () => {
+  const res = await app.inject({ method: "GET", url: "/api/designs?offset=1000000" });
+  assert.equal(res.statusCode, 200);
+  const over = await app.inject({ method: "GET", url: "/api/designs?offset=1000001" });
+  assert.equal(over.statusCode, 400);
+  assert.match(over.json().error.details[0].message, /at most 1000000/);
+});
+
+test("non-JSON bodies, including text/plain, get 415", async () => {
+  for (const type of ["text/plain", "application/x-www-form-urlencoded"]) {
+    const res = await app.inject({ method: "POST", url: "/api/designs", headers: { "content-type": type }, payload: "a=b" });
+    assert.equal(res.statusCode, 415, type);
+    assert.equal(res.json().error.code, "UNSUPPORTED_MEDIA_TYPE", type);
+  }
+});
+
 test("unknown fields are rejected, including attempts to set id or version on create", async () => {
   const res = await app.inject({
     method: "POST",

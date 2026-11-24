@@ -16,8 +16,10 @@ function readPort(raw: string | undefined): number {
 }
 
 const port = readPort(process.env.API_PORT);
-const dbPath = resolve(process.env.DB_PATH ?? resolve(here, "../data/designs.db"));
-mkdirSync(dirname(dbPath), { recursive: true });
+// ":memory:" is SQLite's in-memory database (handy for a throwaway demo); anything else is a file path.
+const rawDbPath = process.env.DB_PATH || resolve(here, "../data/designs.db");
+const dbPath = rawDbPath === ":memory:" ? rawDbPath : resolve(rawDbPath);
+if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
 
 const app = buildApp({ dbPath });
 

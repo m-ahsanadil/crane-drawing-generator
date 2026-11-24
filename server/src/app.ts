@@ -28,6 +28,8 @@ function codeForClientError(status: number): { code: ErrorCode; message: string 
 
 export function buildApp(opts: AppOptions) {
   const app = Fastify({ logger: opts.logger ?? true, bodyLimit: BODY_LIMIT_BYTES });
+  // JSON only: without this, Fastify's built-in text/plain parser turns a text body into a string.
+  app.removeContentTypeParser("text/plain");
   const db = openDatabase(opts.dbPath);
   const repo = new DesignRepository(db);
 

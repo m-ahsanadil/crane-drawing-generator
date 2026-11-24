@@ -9,7 +9,11 @@ const nameSchema = z
   .string({ error: "Name must be text" })
   .trim()
   .min(1, { error: "Name is required" })
-  .max(100, { error: "Name must be at most 100 characters" });
+  .max(100, { error: "Name must be at most 100 characters" })
+  // Control characters break SQLite length() and XML; lone surrogates get silently replaced on storage.
+  .refine((s) => s.isWellFormed() && !/\p{Cc}/u.test(s), {
+    error: "Name contains control characters or invalid Unicode",
+  });
 
 const createBody = z.strictObject({ name: nameSchema, params: craneParamsSchema });
 const updateBody = z.strictObject({
@@ -26,7 +30,7 @@ const idParams = z.object({
 const pageNumber = (min: number, max: number, label: string) =>
   z
     .string()
-    .regex(/^[0-9]{1,6}$/, { error: `${label} must be a whole number` })
+    .regex(/^[0-9]{1,7}$/, { error: `${label} must be a whole number` })
     .transform(Number)
     .pipe(z.int().min(min, { error: `${label} must be at least ${min}` }).max(max, { error: `${label} must be at most ${max}` }));
 const listQuery = z.object({
