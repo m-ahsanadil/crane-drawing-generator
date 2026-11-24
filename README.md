@@ -106,9 +106,11 @@ Error codes: `VALIDATION_FAILED` (400), `MALFORMED_REQUEST` (400),
 
 **Local-only safety.** The API listens on `127.0.0.1` and answers only requests
 whose `Host` is `127.0.0.1:<port>` or `localhost:<port>` (403 otherwise), which
-blocks DNS-rebinding pages. It accepts JSON bodies only (415 otherwise), so a
-cross-site form cannot create data. Design names must be plain visible text:
-control, invisible and direction-changing characters are refused.
+blocks DNS-rebinding pages. It accepts UTF-8 JSON bodies only (415 for other
+types or charsets, 400 for invalid UTF-8 bytes), so a cross-site form cannot
+create data and no text is silently changed on the way in. Design names must
+be plain visible text: control, invisible and direction-changing characters
+are refused, and a name that only looks blank counts as missing.
 
 **Edits use optimistic concurrency.** A `PUT` must send the version it loaded.
 If someone saved in between, the server answers 409 instead of overwriting

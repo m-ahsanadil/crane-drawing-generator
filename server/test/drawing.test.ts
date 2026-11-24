@@ -53,6 +53,15 @@ test("output stays valid XML even if a stored name holds illegal characters", ()
   assert.ok(svg.isWellFormed(), "lone surrogate in SVG");
 });
 
+test("long names are shortened without cutting a character in half (V3)", () => {
+  const svg = render(params, "\u{1F3D7}".repeat(100));
+  assert.ok(!svg.includes("�"), "a split surrogate pair became U+FFFD");
+  assert.ok(svg.includes("\u{1F3D7}…"), "shortened name should end with an ellipsis");
+  // A flag is two code points but one visible character; it must not be split either.
+  const flags = render(params, "\u{1F1F5}\u{1F1F0}".repeat(40));
+  assert.ok(/(\u{1F1F5}\u{1F1F0})+…/u.test(flags), "a flag was split");
+});
+
 test("is deterministic", () => {
   assert.equal(render(), render());
 });

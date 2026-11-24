@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+// Same parser as the server, so a port spelling one accepts the other cannot reject.
+import { parseApiPort } from "../server/src/config.ts";
 
 // The dev server proxies /api to the backend, so the browser talks to one origin.
-// API_PORT must match the server (server/src/index.ts, default 8787).
-const apiPort = process.env.API_PORT || "8787";
+const apiPort = parseApiPort(process.env.API_PORT);
 
 export default defineConfig({
   plugins: [react()],

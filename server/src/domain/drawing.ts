@@ -27,6 +27,15 @@ const esc = (s: string) =>
     .toWellFormed()
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const graphemes = new Intl.Segmenter("en", { granularity: "grapheme" });
+/**
+ * Cuts by user-visible characters (graphemes), never inside one: slicing UTF-16 units
+ * split emoji into a lone surrogate, which then showed as U+FFFD.
+ */
+function shorten(s: string, max: number): string {
+  const parts = Array.from(graphemes.segment(s), (g) => g.segment);
+  return parts.length > max ? `${parts.slice(0, max - 1).join("")}…` : s;
+}
 const n = (v: number) => String(Math.round(v * 10) / 10);
 const tonnes = (kg: number) => `${kg / 1000} t`;
 
@@ -245,7 +254,7 @@ function dataTable(svg: Svg, input: DrawingInput, box: Box) {
     const ry = box.y + 30 + i * 24;
     svg.text(box.x, ry, k, { anchor: "start" });
     // Long names are cut so they cannot run off the sheet; the full name is stored in the database.
-    svg.text(box.x + box.w, ry, val.length > 28 ? `${val.slice(0, 27)}…` : val, { anchor: "end" });
+    svg.text(box.x + box.w, ry, shorten(val, 28), { anchor: "end" });
     svg.line(box.x, ry + 7, box.x + box.w, ry + 7, "row");
   });
 

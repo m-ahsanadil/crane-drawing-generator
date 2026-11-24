@@ -5,8 +5,15 @@ import { renderDrawing } from "../domain/drawing.ts";
 import type { DesignRepository, ListCursor, StoredDesign } from "../db/designs.ts";
 import { ApiError, parseOrThrow } from "../errors.ts";
 
+/**
+ * Hangul fillers and the braille blank are classed as letters/symbols but draw nothing.
+ * Written as escapes on purpose: raw invisible characters in source cannot be reviewed.
+ */
+const BLANK_LOOKING = /[ᅟᅠㅤﾠ⠀]/gu;
+const hasVisibleCharacter = (s: string) => /[\p{L}\p{N}\p{P}\p{S}]/u.test(s.replace(BLANK_LOOKING, ""));
+
 const nameSchema = z
-  .string({ error: "Name must be text" })
+  .string({ error: (iss) => (iss.input == null ? "Name is required" : "Name must be text") })
   .trim()
   .min(1, { error: "Name is required" })
   .max(100, { error: "Name must be at most 100 characters" })
@@ -15,13 +22,17 @@ const nameSchema = z
   // (a bidi override shows "exe.gnp" as "png.exe"). Trade-off: emoji joined with ZWJ are refused too.
   .refine((s) => s.isWellFormed() && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Noncharacter_Code_Point}]/u.test(s), {
     error: "Name contains control, invisible or invalid Unicode characters",
-  });
+  })
+  // A name made only of combining marks, fillers or blanks looks empty, so it counts as missing.
+  .refine(hasVisibleCharacter, { error: "Name is required" });
 
 const createBody = z.strictObject({ name: nameSchema, params: craneParamsSchema });
 const updateBody = z.strictObject({
   name: nameSchema,
   params: craneParamsSchema,
-  version: z.int({ error: "Version must be a whole number" }).min(1, { error: "Version must be at least 1" }),
+  version: z
+    .int({ error: (iss) => (iss.input == null ? "Version is required" : "Version must be a whole number") })
+    .min(1, { error: "Version must be at least 1" }),
 });
 const previewBody = z.strictObject({ params: craneParamsSchema });
 
@@ -31,7 +42,8 @@ const idParams = z.object({
 });
 const limitParam = z
   .string()
-  .regex(/^[0-9]{1,3}$/, { error: "limit must be a whole number" })
+  // No leading zeros, the same rule as ids.
+  .regex(/^[1-9][0-9]{0,2}$/, { error: "limit must be a whole number from 1 to 100" })
   .transform(Number)
   .pipe(z.int().min(1, { error: "limit must be at least 1" }).max(100, { error: "limit must be at most 100" }));
 

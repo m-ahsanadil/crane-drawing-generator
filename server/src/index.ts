@@ -2,20 +2,11 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.ts";
+import { parseApiPort } from "./config.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** API_PORT is shared with web/vite.config.ts so the dev proxy always points at this server. */
-function readPort(raw: string | undefined): number {
-  if (raw === undefined || raw === "") return 8787;
-  const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error(`API_PORT must be a whole number between 1 and 65535, got "${raw}"`);
-  }
-  return port;
-}
-
-const port = readPort(process.env.API_PORT);
+const port = parseApiPort(process.env.API_PORT);
 // ":memory:" is SQLite's in-memory database (handy for a throwaway demo); anything else is a file path.
 const rawDbPath = process.env.DB_PATH || resolve(here, "../data/designs.db");
 const dbPath = rawDbPath === ":memory:" ? rawDbPath : resolve(rawDbPath);

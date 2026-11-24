@@ -341,7 +341,8 @@ export function App() {
             <input
               id="name"
               value={values.name}
-              maxLength={100}
+              // No maxLength: the browser counts UTF-16 units (an emoji counts 2), the server counts
+              // characters. The server's 100-character rule is the only one, shown as a field error.
               onChange={(e) => setField("name", e.target.value)}
               aria-invalid={fieldErrors.name ? true : undefined}
               aria-describedby={fieldErrors.name ? "name-error" : undefined}

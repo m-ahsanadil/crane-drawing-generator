@@ -39,9 +39,15 @@ export class ApiError extends Error {
 export function parseOrThrow<S extends z.ZodType>(schema: S, input: unknown, prefix = ""): z.infer<S> {
   const result = schema.safeParse(input);
   if (result.success) return result.data;
-  const details = result.error.issues.map((issue) => ({
-    path: [prefix, ...issue.path.map(String)].filter(Boolean).join("."),
-    message: issue.message,
-  }));
+  const details: ErrorDetail[] = [];
+  const seen = new Set<string>();
+  for (const issue of result.error.issues) {
+    const path = [prefix, ...issue.path.map(String)].filter(Boolean).join(".");
+    // Several checks can fail for one value with the same message (e.g. 1e308 is neither an int nor <= max).
+    const key = `${path}\u0000${issue.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    details.push({ path, message: issue.message });
+  }
   throw new ApiError(400, "VALIDATION_FAILED", "Request validation failed", details);
 }

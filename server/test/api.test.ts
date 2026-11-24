@@ -244,6 +244,86 @@ test("names with invisible or format characters are rejected (display spoofing)"
   assert.equal(list.json().items.length, 0);
 });
 
+test("names that only look blank are treated as missing (V1)", async () => {
+  // Braille blank, Hangul fillers, a lone combining mark, a grapheme joiner, a variation selector.
+  for (const name of ["⠀", "ㅤ", "ᅟᅠ", "ﾠ", "́", "͏", "️", " ⠀ "]) {
+    const res = await create(name);
+    assert.equal(res.statusCode, 400, JSON.stringify(name));
+    assert.equal(res.json().error.details[0].message, "Name is required", JSON.stringify(name));
+  }
+  // A decomposed letter (e + combining acute) is a real, visible name.
+  assert.equal((await create("Café")).statusCode, 201);
+});
+
+test("request bodies must be valid UTF-8 JSON; nothing is silently changed (V2)", async () => {
+  const body = (nameBytes: number[]) =>
+    Buffer.concat([
+      Buffer.from('{"name":"'),
+      Buffer.from(nameBytes),
+      Buffer.from(`","params":${JSON.stringify(params)}}`),
+    ]);
+  const send = (bytes: number[], contentType: string) =>
+    app.inject({ method: "POST", url: "/api/designs", headers: { "content-type": contentType }, payload: body(bytes) });
+
+  const latin1 = await send([0x43, 0x61, 0x66, 0xe9], "application/json; charset=iso-8859-1");
+  assert.equal(latin1.statusCode, 415);
+  assert.equal(latin1.json().error.code, "UNSUPPORTED_MEDIA_TYPE");
+  for (const bytes of [[0x41, 0xff, 0xfe, 0x42], [0xc0, 0xaf], [0x41, 0xe9, 0x42]]) {
+    const res = await send(bytes, "application/json");
+    assert.equal(res.statusCode, 400, JSON.stringify(bytes));
+    assert.equal(res.json().error.code, "MALFORMED_REQUEST", JSON.stringify(bytes));
+  }
+  const list = await app.inject({ method: "GET", url: "/api/designs" });
+  assert.equal(list.json().items.length, 0);
+
+  // Valid UTF-8, with or without an explicit charset (any case), is stored exactly.
+  for (const ct of ["application/json", "application/json; charset=utf-8", "application/json; charset=UTF-8"]) {
+    const ok = await send([0x43, 0x61, 0x66, 0xc3, 0xa9], ct);
+    assert.equal(ok.statusCode, 201, ct);
+    assert.equal(ok.json().name, "Café", ct);
+  }
+  // Prototype-pollution keys are still refused by the JSON parser.
+  const proto = await app.inject({
+    method: "POST",
+    url: "/api/designs",
+    headers: { "content-type": "application/json" },
+    payload: `{"__proto__":{"x":1},"name":"a","params":${JSON.stringify(params)}}`,
+  });
+  assert.equal(proto.statusCode, 400);
+});
+
+test("missing values get 'is required' messages, and each problem is reported once (V4)", async () => {
+  const noName = await app.inject({ method: "POST", url: "/api/designs", payload: { params } });
+  assert.deepEqual(noName.json().error.details, [{ path: "name", message: "Name is required" }]);
+  const nullName = await create(null as unknown as string);
+  assert.equal(nullName.json().error.details[0].message, "Name is required");
+  const wrongType = await create(42 as unknown as string);
+  assert.equal(wrongType.json().error.details[0].message, "Name must be text");
+
+  await create();
+  const noVersion = await app.inject({ method: "PUT", url: "/api/designs/1", payload: { name: "x", params } });
+  assert.deepEqual(noVersion.json().error.details, [{ path: "version", message: "Version is required" }]);
+
+  const huge = await create("x", { ...params, spanMm: 1e308 });
+  assert.equal(huge.json().error.details.length, 1);
+});
+
+test("an invalid rail height does not produce a second, misleading lifting-height error (V5)", async () => {
+  const res = await create("x", { ...params, railHeightMm: 2_000 });
+  assert.deepEqual(
+    res.json().error.details.map((d: { path: string }) => d.path),
+    ["params.railHeightMm"],
+  );
+});
+
+test("limit must be written without leading zeros, like ids (V8)", async () => {
+  for (const q of ["limit=007", "limit=00"]) {
+    const res = await app.inject({ method: "GET", url: `/api/designs?${q}` });
+    assert.equal(res.statusCode, 400, q);
+  }
+  assert.equal((await app.inject({ method: "GET", url: "/api/designs?limit=7" })).statusCode, 200);
+});
+
 test("update also rejects control characters in the name", async () => {
   await create();
   const res = await app.inject({ method: "PUT", url: "/api/designs/1", payload: { name: "\u0000x", params, version: 1 } });

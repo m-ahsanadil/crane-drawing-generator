@@ -68,6 +68,10 @@ export const craneParamsSchema = z
   .superRefine((p, ctx) => {
     // Lifting height = vertical hook travel. The highest hook position is fixed by the hoist,
     // so the hook may not travel further down than the floor (ASSUMPTION: no pit below floor).
+    // Zod still runs this when a field failed only its range check, so skip it for a rail height
+    // that is already rejected; a maximum derived from it would be a second, misleading error.
+    const r = LIMITS.railHeightMm;
+    if (!(p.railHeightMm >= r.min && p.railHeightMm <= r.max)) return;
     const highestHook = p.railHeightMm - REFERENCE.hookTopBelowRailMm;
     if (p.liftingHeightMm > highestHook) {
       ctx.addIssue({

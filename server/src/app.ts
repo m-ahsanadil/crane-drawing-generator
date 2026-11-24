@@ -36,6 +36,28 @@ export function buildApp(opts: AppOptions) {
   const app = Fastify({ logger: opts.logger ?? true, bodyLimit: BODY_LIMIT_BYTES });
   // JSON only: without this, Fastify's built-in text/plain parser turns a text body into a string.
   app.removeContentTypeParser("text/plain");
+
+  // Strict UTF-8: the default parser replaced invalid bytes with U+FFFD, so what was saved could
+  // differ from what was sent. Decode strictly first, then hand the text to Fastify's own JSON
+  // parser, which keeps its __proto__ / constructor protection.
+  const parseJsonText = app.getDefaultJsonParser("error", "error");
+  const utf8 = new TextDecoder("utf-8", { fatal: true }); // also drops a leading UTF-8 BOM
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "buffer" }, (req, body, done) => {
+    const charset = /;\s*charset\s*=\s*"?([^";\s]+)"?/i.exec(req.headers["content-type"] ?? "")?.[1]?.toLowerCase();
+    if (charset !== undefined && charset !== "utf-8" && charset !== "utf8") {
+      done(new ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Send the request body as UTF-8 JSON"), undefined);
+      return;
+    }
+    let text: string;
+    try {
+      text = utf8.decode(body as Buffer);
+    } catch {
+      done(new ApiError(400, "MALFORMED_REQUEST", "Request body is not valid UTF-8"), undefined);
+      return;
+    }
+    parseJsonText(req, text, done);
+  });
   if (opts.allowedHosts.length === 0) throw new Error("allowedHosts must name at least one host:port");
   const allowedHosts = new Set(opts.allowedHosts.map((h) => h.toLowerCase()));
   const db = openDatabase(opts.dbPath);
