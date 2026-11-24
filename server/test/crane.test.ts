@@ -38,7 +38,16 @@ test("derived geometry reproduces the reference drawing dimensions", () => {
   assert.equal(g.minTopClearanceMm, 200);
   // rail top + crane height + top clearance
   assert.equal(g.minBuildingClearHeightMm, 8_321 + 1_369 + 200);
-  assert.equal(g.hookTravelMm, 25_000 - 920 - 1_150);
+  assert.equal(g.hookCoverageMm, 25_000 - 920 - 1_150);
+  // Reference: highest hook 7900 above floor and 7.9 m lift, so the hook reaches the floor.
+  assert.equal(g.hookHighestAboveFloorMm, 7_900);
+  assert.equal(g.hookLowestAboveFloorMm, 0);
+});
+
+test("a shorter lift leaves the lowest hook position above the floor", () => {
+  const g = deriveGeometry({ ...referenceParams, liftingHeightMm: 5_000 });
+  assert.equal(g.hookHighestAboveFloorMm, 7_900);
+  assert.equal(g.hookLowestAboveFloorMm, 2_900);
 });
 
 test("span limits are inclusive", () => {
@@ -90,7 +99,9 @@ test("derived values are whole millimetres and positive across the input range",
   for (const spanMm of [LIMITS.spanMm.min, 12_345, LIMITS.spanMm.max]) {
     const g = deriveGeometry({ ...referenceParams, spanMm });
     for (const [key, value] of Object.entries(g)) {
-      assert.ok(Number.isInteger(value) && value > 0, `${key}=${value} at span ${spanMm}`);
+      // The lowest hook position is exactly 0 when the hook reaches the floor; every other value must be > 0.
+      const min = key === "hookLowestAboveFloorMm" ? 0 : 1;
+      assert.ok(Number.isInteger(value) && value >= min, `${key}=${value} at span ${spanMm}`);
     }
   }
 });

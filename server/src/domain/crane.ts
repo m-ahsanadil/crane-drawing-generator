@@ -66,12 +66,14 @@ export const craneParamsSchema = z
     liftingHeightMm: mm("Lifting height", LIMITS.liftingHeightMm.min),
   })
   .superRefine((p, ctx) => {
+    // Lifting height = vertical hook travel. The highest hook position is fixed by the hoist,
+    // so the hook may not travel further down than the floor (ASSUMPTION: no pit below floor).
     const highestHook = p.railHeightMm - REFERENCE.hookTopBelowRailMm;
     if (p.liftingHeightMm > highestHook) {
       ctx.addIssue({
         code: "custom",
         path: ["liftingHeightMm"],
-        message: `Lifting height can be at most ${highestHook} mm for this rail height (hook stops ${REFERENCE.hookTopBelowRailMm} mm below rail top)`,
+        message: `Lifting height can be at most ${highestHook} mm for this rail height (highest hook position is ${REFERENCE.hookTopBelowRailMm} mm below rail top; hook may not go below floor)`,
       });
     }
   });
@@ -85,7 +87,9 @@ export interface CraneGeometry {
   craneHeightAboveRailMm: number;
   hookApproachLeftMm: number;
   hookApproachRightMm: number;
-  hookTravelMm: number;
+  hookCoverageMm: number;
+  hookHighestAboveFloorMm: number;
+  hookLowestAboveFloorMm: number;
   minEndClearanceMm: number;
   minTopClearanceMm: number;
   minBuildingClearHeightMm: number;
@@ -111,7 +115,9 @@ export function deriveGeometry(p: CraneParams): CraneGeometry {
     craneHeightAboveRailMm,
     hookApproachLeftMm: r.hookApproachLeftMm,
     hookApproachRightMm: r.hookApproachRightMm,
-    hookTravelMm: p.spanMm - r.hookApproachLeftMm - r.hookApproachRightMm,
+    hookCoverageMm: p.spanMm - r.hookApproachLeftMm - r.hookApproachRightMm,
+    hookHighestAboveFloorMm: p.railHeightMm - r.hookTopBelowRailMm,
+    hookLowestAboveFloorMm: p.railHeightMm - r.hookTopBelowRailMm - p.liftingHeightMm,
     minEndClearanceMm: r.minEndClearanceMm,
     minTopClearanceMm: r.minTopClearanceMm,
     minBuildingClearHeightMm: p.railHeightMm + craneHeightAboveRailMm + r.minTopClearanceMm,
