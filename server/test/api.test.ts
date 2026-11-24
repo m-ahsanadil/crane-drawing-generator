@@ -26,6 +26,15 @@ test("health check responds", async () => {
   assert.deepEqual(res.json(), { status: "ok" });
 });
 
+test("crane options expose the server's own limits so the UI does not duplicate them", async () => {
+  const res = await app.inject({ method: "GET", url: "/api/crane-options" });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.ok(body.capacitiesKg.includes(10_000));
+  assert.deepEqual(body.limits.spanMm, { min: 5_000, max: 30_000 });
+  assert.equal(body.hookTopBelowRailMm, 421);
+});
+
 test("create returns 201 with the stored design and derived geometry", async () => {
   const res = await create("  Bay 1 crane  ");
   assert.equal(res.statusCode, 201);

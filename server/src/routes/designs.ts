@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { craneParamsSchema, deriveGeometry } from "../domain/crane.ts";
+import { CAPACITIES_KG, craneParamsSchema, deriveGeometry, LIMITS, REFERENCE } from "../domain/crane.ts";
 import { renderDrawing } from "../domain/drawing.ts";
 import type { DesignRepository, StoredDesign } from "../db/designs.ts";
 import { ApiError, parseOrThrow } from "../errors.ts";
@@ -43,6 +43,13 @@ function notFound(id: number): never {
 }
 
 export function registerDesignRoutes(app: FastifyInstance, repo: DesignRepository) {
+  // The UI reads its hints from here so the limits live only in domain/crane.ts.
+  app.get("/api/crane-options", async () => ({
+    capacitiesKg: CAPACITIES_KG,
+    limits: LIMITS,
+    hookTopBelowRailMm: REFERENCE.hookTopBelowRailMm,
+  }));
+
   app.get("/api/designs", async (req) => {
     const q = parseOrThrow(listQuery, req.query);
     const { items, total } = repo.list(q.limit ?? 50, q.offset ?? 0);
