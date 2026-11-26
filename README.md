@@ -170,4 +170,15 @@ short session, so commit times are close together; they do not show the time
 spent reading the brief, studying the drawing, reviewing and testing.
 [DECISIONS.md](DECISIONS.md) is written by me without AI.
 
-**Hours spent:** TODO(Ahsan): fill in the real hours before submitting.
+**Hours spent:** about 4 to 5 hours in total (my own estimate, rounded):
+
+| Part | Time |
+|---|---|
+| Understanding the brief and the crane domain, writing DECISIONS.md | about 2 h |
+| First working version with Claude Code | under 1 h |
+| Review passes and fixing what they found | about 1.5 h |
+| README, AI log and the video | about 0.5 to 1 h |
+
+The Claude Code session timestamps show about 3 hours of active work; the
+rest is time outside that session (the review passes in Claude.ai, reading,
+and recording the video).
