@@ -179,6 +179,6 @@ spent reading the brief, studying the drawing, reviewing and testing.
 | Review passes and fixing what they found | about 1.5 h |
 | README, AI log and the video | about 0.5 to 1 h |
 
-The Claude Code session timestamps show about 3 hours of active work; the
-rest is time outside that session (the review passes in Claude.ai, reading,
-and recording the video).
+The Claude Code session timestamps show about 3 hours of active work (the
+review passes in Claude.ai ran alongside it). The rest is reading and
+thinking between sessions, and recording the video.
